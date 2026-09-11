@@ -274,47 +274,6 @@ struct GitRootTests {
     }
 }
 
-// MARK: - Display Name Tests
-
-struct DisplayNameTests {
-
-    @Test func prefersGitRootName() {
-        let name = LivePortScanner.displayName(
-            processName: "beam.smp",
-            cwd: "/Users/me/work/backend",
-            gitRoot: URL(filePath: "/Users/me/work/agidb-backend")
-        )
-        #expect(name == "agidb-backend")
-    }
-
-    @Test func fallsBackToMeaningfulCwdBasename() {
-        let name = LivePortScanner.displayName(
-            processName: "beam.smp",
-            cwd: "/Users/me/work/agidb-backend",
-            gitRoot: nil
-        )
-        #expect(name == "agidb-backend")
-    }
-
-    @Test func fallsBackToProcessNameForGenericDirectory() {
-        let name = LivePortScanner.displayName(
-            processName: "beam.smp",
-            cwd: "/Users/me/work/agidb-backend/_build",
-            gitRoot: nil
-        )
-        #expect(name == "beam.smp")
-    }
-
-    @Test func fallsBackToProcessNameWithoutCwd() {
-        let name = LivePortScanner.displayName(
-            processName: "beam.smp",
-            cwd: nil,
-            gitRoot: nil
-        )
-        #expect(name == "beam.smp")
-    }
-}
-
 // MARK: - Fallback Filter Tests
 
 struct FallbackFilterTests {
@@ -369,38 +328,6 @@ struct FallbackFilterTests {
     }
 }
 
-// MARK: - Docker Display Name Tests
-
-struct DockerDisplayNameTests {
-
-    @Test func dockerBackendShowsDocker() {
-        let name = LivePortScanner.displayName(
-            processName: "com.docke",
-            cwd: "/",
-            gitRoot: nil
-        )
-        #expect(name == "Docker")
-    }
-
-    @Test func dockerProxyShowsDocker() {
-        let name = LivePortScanner.displayName(
-            processName: "docker-pr",
-            cwd: "/",
-            gitRoot: nil
-        )
-        #expect(name == "Docker")
-    }
-
-    @Test func dockerWithGitRootPrefersGitName() {
-        let name = LivePortScanner.displayName(
-            processName: "com.docke",
-            cwd: "/Users/me/app",
-            gitRoot: URL(filePath: "/Users/me/app")
-        )
-        #expect(name == "app")
-    }
-}
-
 // MARK: - PortStore Tests
 
 @Suite(.serialized) struct PortStoreTests {
@@ -436,8 +363,8 @@ struct DockerDisplayNameTests {
 
     @Test @MainActor func hidesBackgroundServicesButKeepsDevelopmentProjects() async throws {
         let ports = [
-            ActivePort(port: 8000, pid: 1, projectName: "oMLX", branch: "", startTime: nil, backgroundService: .omlx),
-            ActivePort(port: 7265, pid: 2, projectName: "Raycast", branch: "", startTime: nil, backgroundService: .raycast),
+            ActivePort(port: 8000, pid: 1, projectName: "oMLX", branch: "", startTime: nil, ownerID: "homebrew:omlx"),
+            ActivePort(port: 7265, pid: 2, projectName: "Raycast", branch: "", startTime: nil, ownerID: "app:com.raycast.macos"),
             ActivePort(port: 3000, pid: 3, projectName: "website", branch: "main", startTime: nil),
             ActivePort(port: 3001, pid: 4, projectName: "homebrew", branch: "main", startTime: nil),
             ActivePort(port: 3002, pid: 5, projectName: "Raycast", branch: "main", startTime: nil),
@@ -451,7 +378,7 @@ struct DockerDisplayNameTests {
     }
 
     @Test @MainActor func pollingStartsWithoutAVisibleMenu() async throws {
-        let omlx = ActivePort(port: 8000, pid: 1, projectName: "oMLX", branch: "", startTime: nil, backgroundService: .omlx)
+        let omlx = ActivePort(port: 8000, pid: 1, projectName: "oMLX", branch: "", startTime: nil, ownerID: "homebrew:omlx")
         let store = PortStore(scanner: FakePortScanner(ports: [omlx], delay: 0))
         store.ensurePolling()
         try await Task.sleep(for: .milliseconds(200))
@@ -518,32 +445,5 @@ struct ScanDiagnosticsTests {
         #expect(summary.contains("42"))
         #expect(summary.contains("3 ports"))
         #expect(summary.contains("lsof"))
-    }
-}
-
-struct BackgroundServiceTests {
-    @Test func parsesFullProcessTitlesAndPaths() {
-        let commands = LivePortScanner.parseProcessCommands("""
-          123 Raycast Backend
-          456 omlx-server
-          789 /opt/homebrew/bin/node
-          999 /Applications/Some App.app/Contents/MacOS/server
-          invalid line
-        """)
-        #expect(commands.count == 4)
-        #expect(commands[123] == "Raycast Backend")
-        #expect(commands[999] == "/Applications/Some App.app/Contents/MacOS/server")
-        #expect(LivePortScanner.backgroundService(processCommand: commands[123]) == .raycast)
-        #expect(LivePortScanner.backgroundService(processCommand: commands[456]) == .omlx)
-        #expect(LivePortScanner.backgroundService(processCommand: commands[789]) == nil)
-    }
-
-    @Test func doesNotGuessServiceFromRuntimeOrSimilarName() {
-        for command in ["node", "Python", "/opt/homebrew/bin/python3", "my-omlx-server", "Raycast Backend Test"] {
-            #expect(LivePortScanner.backgroundService(processCommand: command) == nil)
-        }
-        #expect(LivePortScanner.backgroundService(processCommand: nil) == nil)
-        #expect(BackgroundService.raycast.rawValue == "Raycast")
-        #expect(BackgroundService.omlx.rawValue == "oMLX")
     }
 }

@@ -8,11 +8,20 @@ No config. No setup. It just works.
 
 ## Personal fork
 
-This fork identifies Raycast and oMLX using their full process titles, instead of
-labeling them as `node` or `homebrew`. Both services are hidden from the menu and
-count. Filtering uses service identity, so ordinary Node servers and projects
-with the same names remain visible. Known services do not inherit Homebrew's Git
-branch.
+This fork resolves port names from app bundles and app-owned runtimes, active
+launch services (including their child processes), Node package metadata, Git
+projects, Python modules, and script paths. It ignores Homebrew's installation
+repository when finding projects. If ownership is unknown, it keeps a runtime
+label such as `Node` instead of guessing.
+
+Raycast and oMLX are hidden using stable owner IDs (`app:com.raycast.macos` and
+`homebrew:omlx`), independently of their display names or ports. Other identified
+launch services remain visible. Process titles alone do not trigger hiding.
+
+Detection is best effort: inaccessible process metadata, overwritten arguments,
+or unusual launchers can leave only the fallback name. Parent app attribution
+requires a matching bundle/runtime path; a server launched from a terminal or an
+editor is not automatically named after that app.
 
 The menu bar item is removed when the filtered list is empty. Scanning continues
 in the background; the item returns when a development server is detected,
@@ -23,7 +32,7 @@ The upstream updater is disabled so it cannot replace these changes.
 Build and run the local patch with `./script/build_and_run.sh --verify`.
 It uses local ad hoc signing by default. Set `CODE_SIGN_IDENTITY` and
 `DEVELOPMENT_TEAM` to use your Developer ID certificate. The output is
-`build/DerivedData/Build/Products/Release/Port Menu.app`, version `0.8.10-robin.2`.
+`build/DerivedData/Build/Products/Release/Port Menu.app`, version `0.8.10-robin.3`.
 
 ---
 

@@ -19,6 +19,7 @@ struct LivePortScanner: PortScanning {
         "air",
         "beam.smp",
         "bun",
+        "bun.exe",
         "deno",
         "elixir",
         "erl",
@@ -27,6 +28,7 @@ struct LivePortScanner: PortScanning {
         "java",
         "mix",
         "node",
+        "node.exe",
         "php",
         "puma",
         "python",
@@ -74,11 +76,18 @@ struct LivePortScanner: PortScanning {
         let pids = Set(parsed.map(\.pid))
         async let cwdResult = resolveCWDs(pids: pids)
         async let startTimeResult = resolveStartTimes(pids: pids)
-        async let commandResult = resolveProcessCommands(pids: pids)
-        let (cwds, startTimes, commands) = await (cwdResult, startTimeResult, commandResult)
-
-        return await resolveProjects(parsed: parsed, cwds: cwds,
-                                     startTimes: startTimes, commands: commands)
+        async let commandResult = try? runShell("/bin/ps", args: ["-axo", "pid=,ppid=,comm="], timeout: 5)
+        async let serviceResult = try? runShell("/bin/launchctl", args: ["list"], timeout: 5)
+        async let appResult = ProcessIdentity.runningApplications()
+        let (cwds, startTimes, commandOutput, serviceOutput, applications) = await
+            (cwdResult, startTimeResult, commandResult, serviceResult, appResult)
+        let commands = ProcessIdentity.parseCommands(commandOutput ?? "")
+        let services = ProcessIdentity.services(launchctlOutput: serviceOutput ?? "", directories: [
+            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/LaunchAgents"),
+            URL(filePath: "/Library/LaunchAgents"), URL(filePath: "/Library/LaunchDaemons")
+        ])
+        return await resolveProjects(parsed: parsed, cwds: cwds, startTimes: startTimes,
+                                     commands: commands, applications: applications, services: services)
     }
 
     // MARK: - lsof Parsing (static for testability)
@@ -145,35 +154,6 @@ struct LivePortScanner: PortScanning {
         return result
     }
 
-    // lsof reports the runtime (node/Python); ps exposes service process titles.
-    private func resolveProcessCommands(pids: Set<Int32>) async -> [Int32: String] {
-        guard !pids.isEmpty else { return [:] }
-        let pidList = pids.map(String.init).joined(separator: ",")
-        guard let output = try? await runShell(
-            "/bin/ps", args: ["-p", pidList, "-o", "pid=,comm="], timeout: 5
-        ) else { return [:] }
-        return Self.parseProcessCommands(output)
-    }
-
-    static func parseProcessCommands(_ output: String) -> [Int32: String] {
-        var commands: [Int32: String] = [:]
-        for line in output.split(separator: "\n") {
-            let parts = line.split(maxSplits: 1, whereSeparator: { $0.isWhitespace })
-            guard parts.count == 2, let pid = Int32(parts[0]) else { continue }
-            commands[pid] = parts[1].trimmingCharacters(in: .whitespaces)
-        }
-        return commands
-    }
-
-    static func backgroundService(processCommand: String?) -> BackgroundService? {
-        guard let processCommand else { return nil }
-        switch URL(filePath: processCommand).lastPathComponent {
-        case "Raycast Backend": return .raycast
-        case "omlx-server": return .omlx
-        default: return nil
-        }
-    }
-
     // MARK: - Start Time Resolution
 
     private func resolveStartTimes(pids: Set<Int32>) async -> [Int32: Date] {
@@ -208,95 +188,46 @@ struct LivePortScanner: PortScanning {
     // MARK: - Git Resolution
 
     private func resolveProjects(
-        parsed: [ParsedPort],
-        cwds: [Int32: String],
-        startTimes: [Int32: Date],
-        commands: [Int32: String]
+        parsed: [ParsedPort], cwds: [Int32: String], startTimes: [Int32: Date],
+        commands: [Int32: ProcessIdentity.Command], applications: [ProcessIdentity.Application],
+        services: [Int32: ProcessIdentity.Service]
     ) async -> [ActivePort] {
-        var gitRoots: [String: URL] = [:]
+        var owners: [Int32: PortOwner] = [:]
+        for info in parsed where owners[info.pid] == nil {
+            owners[info.pid] = ProcessIdentity.resolve(
+                processName: info.processName, title: commands[info.pid]?.title,
+                executable: ProcessIdentity.executablePath(pid: info.pid),
+                arguments: ProcessIdentity.arguments(pid: info.pid), cwd: cwds[info.pid],
+                applications: applications,
+                service: ProcessIdentity.service(pid: info.pid, commands: commands, services: services)
+            )
+        }
+        let rootPaths = Set(owners.values.compactMap { $0.projectRoot?.path })
         var branches: [String: String] = [:]
-
-        for (_, cwd) in cwds {
-            guard gitRoots[cwd] == nil else { continue }
-
-            let root: URL?
-            if let cached = Self.cache.gitRoot(for: cwd) {
-                root = cached
+        for path in rootPaths {
+            if let cached = Self.cache.branch(for: path, ttl: Self.branchTTL) {
+                branches[path] = cached
             } else {
-                root = Self.findGitRoot(from: cwd)
-                Self.cache.setGitRoot(root, for: cwd)
-            }
-
-            if let root {
-                gitRoots[cwd] = root
-                let rootPath = root.path()
-                if branches[rootPath] == nil {
-                    if let cached = Self.cache.branch(for: rootPath, ttl: Self.branchTTL) {
-                        branches[rootPath] = cached
-                    } else {
-                        let branch = await resolveGitBranch(at: rootPath)
-                        branches[rootPath] = branch
-                        Self.cache.setBranch(branch, for: rootPath)
-                    }
-                }
+                let branch = await resolveGitBranch(at: path)
+                branches[path] = branch
+                Self.cache.setBranch(branch, for: path)
             }
         }
+        Self.cache.prune(activeRootPaths: rootPaths)
 
-        let activeCWDs = Set(cwds.values)
-        let activeRootPaths = Set(gitRoots.values.map { $0.path() })
-        Self.cache.prune(activeCWDs: activeCWDs, activeRootPaths: activeRootPaths)
-
-        return parsed.compactMap { info -> ActivePort? in
-            let cwd = cwds[info.pid]
-            let gitRoot = cwd.flatMap { gitRoots[$0] }
-            let rootPath = gitRoot?.path()
-            let service = Self.backgroundService(processCommand: commands[info.pid])
-
-            if service == nil, gitRoot == nil, !Self.shouldKeepFallbackProcess(processName: info.processName, cwd: cwd) {
-                if Log.isVerbose {
-                    Log.scanner.debug("Skipping non-project process '\(info.processName)' on port \(info.port)")
-                }
+        return parsed.compactMap { info in
+            guard let owner = owners[info.pid] else { return nil }
+            let isService = owner.id.hasPrefix("launchd:") || owner.id.hasPrefix("homebrew:")
+            guard owner.projectRoot != nil || isService
+                    || Self.shouldKeepFallbackProcess(processName: info.processName, cwd: cwds[info.pid]) else {
                 return nil
             }
-
-            let projectName = service?.rawValue ?? Self.displayName(
-                processName: info.processName,
-                cwd: cwd,
-                gitRoot: gitRoot
-            )
-
-            if gitRoot == nil, Log.isVerbose {
-                Log.scanner.debug("Using fallback label '\(projectName)' for PID \(info.pid) on port \(info.port)")
-            }
-
             return ActivePort(
-                port: info.port,
-                pid: info.pid,
-                projectName: projectName,
-                branch: service == nil ? (rootPath.flatMap { branches[$0] } ?? "") : "",
-                startTime: startTimes[info.pid],
-                backgroundService: service
+                port: info.port, pid: info.pid, projectName: owner.name,
+                branch: owner.projectRoot.flatMap { branches[$0.path] } ?? "",
+                startTime: startTimes[info.pid], ownerID: owner.id
             )
         }
-    }
-
-    static func displayName(processName: String, cwd: String?, gitRoot: URL?) -> String {
-        if let gitRoot {
-            return gitRoot.lastPathComponent
-        }
-
-        if isDockerProcess(processName) {
-            return "Docker"
-        }
-
-        if let cwd {
-            let basename = URL(filePath: cwd).lastPathComponent
-            if isMeaningfulDirectoryName(basename) {
-                return basename
-            }
-        }
-
-        return processName
     }
 
     static func shouldKeepFallbackProcess(processName: String, cwd: String?) -> Bool {
@@ -334,7 +265,7 @@ struct LivePortScanner: PortScanning {
 
     static func isMeaningfulDirectoryName(_ name: String) -> Bool {
         guard !name.isEmpty, name != "/", !name.hasPrefix(".") else { return false }
-        let ignored = Set(["_build", "build", "tmp", "dist", "deps"])
+        let ignored = Set(["_build", "build", "tmp", "dist", "deps", "var", "bin", "sbin", "lib", "libexec", "node_modules"])
         return !ignored.contains(name)
     }
 
@@ -349,7 +280,7 @@ struct LivePortScanner: PortScanning {
     static func findGitRoot(from path: String) -> URL? {
         var current = URL(filePath: path)
         let fm = FileManager.default
-        while current.path() != "/" {
+        while !ProcessIdentity.isNamingBoundary(current.path) {
             if fm.fileExists(atPath: current.appending(path: ".git").path()) {
                 return current
             }
@@ -451,16 +382,7 @@ struct LivePortScanner: PortScanning {
 // MARK: - Cache
 
 final class CacheStore: Sendable {
-    private let _gitRoots = OSAllocatedUnfairLock(initialState: [String: URL?]())
     private let _branches = OSAllocatedUnfairLock(initialState: [String: (branch: String, resolved: Date)]())
-
-    func gitRoot(for cwd: String) -> URL?? {
-        _gitRoots.withLock { $0[cwd] }
-    }
-
-    func setGitRoot(_ root: URL?, for cwd: String) {
-        _gitRoots.withLock { $0[cwd] = root }
-    }
 
     func branch(for rootPath: String, ttl: TimeInterval) -> String? {
         _branches.withLock { cache in
@@ -474,10 +396,7 @@ final class CacheStore: Sendable {
         _branches.withLock { $0[rootPath] = (branch, Date()) }
     }
 
-    func prune(activeCWDs: Set<String>, activeRootPaths: Set<String>) {
-        _gitRoots.withLock { cache in
-            cache = cache.filter { activeCWDs.contains($0.key) }
-        }
+    func prune(activeRootPaths: Set<String>) {
         _branches.withLock { cache in
             cache = cache.filter { activeRootPaths.contains($0.key) }
         }

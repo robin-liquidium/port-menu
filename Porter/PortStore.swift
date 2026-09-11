@@ -85,7 +85,7 @@ final class PortStore {
                 lastDiagnostics = diag
                 pruneRecentlyKilled()
                 let filtered = ports.filter {
-                    $0.backgroundService == nil
+                    !$0.isHiddenBackgroundService
                         && !recentlyKilled.keys.contains($0.port)
                 }
                 applyUpdate(filtered)
