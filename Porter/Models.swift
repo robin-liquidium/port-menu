@@ -2,6 +2,11 @@ import Foundation
 
 // MARK: - Port Model
 
+enum BackgroundService: String, Sendable {
+    case raycast = "Raycast"
+    case omlx = "oMLX"
+}
+
 struct ActivePort: Identifiable, Equatable, Hashable, Sendable {
     let id: String
     let port: UInt16
@@ -9,18 +14,20 @@ struct ActivePort: Identifiable, Equatable, Hashable, Sendable {
     let projectName: String
     let branch: String
     let startTime: Date?
+    let backgroundService: BackgroundService?
 
     var url: URL {
         URL(string: "http://localhost:\(port)")!
     }
 
-    init(port: UInt16, pid: Int32, projectName: String, branch: String, startTime: Date?) {
+    init(port: UInt16, pid: Int32, projectName: String, branch: String, startTime: Date?, backgroundService: BackgroundService? = nil) {
         self.id = "\(port)-\(pid)"
         self.port = port
         self.pid = pid
         self.projectName = projectName
         self.branch = branch
         self.startTime = startTime
+        self.backgroundService = backgroundService
     }
 }
 

@@ -434,22 +434,25 @@ struct DockerDisplayNameTests {
         #expect(store.lastError != nil)
     }
 
-    @Test @MainActor func hidesHomebrewButKeepsDevelopmentProjects() async throws {
+    @Test @MainActor func hidesBackgroundServicesButKeepsDevelopmentProjects() async throws {
         let ports = [
-            ActivePort(port: 8000, pid: 1, projectName: "homebrew", branch: "main", startTime: nil),
-            ActivePort(port: 8001, pid: 2, projectName: "Homebrew", branch: "main", startTime: nil),
+            ActivePort(port: 8000, pid: 1, projectName: "oMLX", branch: "", startTime: nil, backgroundService: .omlx),
+            ActivePort(port: 7265, pid: 2, projectName: "Raycast", branch: "", startTime: nil, backgroundService: .raycast),
             ActivePort(port: 3000, pid: 3, projectName: "website", branch: "main", startTime: nil),
-            ActivePort(port: 3001, pid: 4, projectName: "homebrew-tools", branch: "main", startTime: nil)
+            ActivePort(port: 3001, pid: 4, projectName: "homebrew", branch: "main", startTime: nil),
+            ActivePort(port: 3002, pid: 5, projectName: "Raycast", branch: "main", startTime: nil),
+            ActivePort(port: 3003, pid: 6, projectName: "oMLX", branch: "main", startTime: nil),
+            ActivePort(port: 3004, pid: 7, projectName: "node", branch: "", startTime: nil)
         ]
         let store = PortStore(scanner: FakePortScanner(ports: ports, delay: 0))
         store.refresh()
         try await Task.sleep(for: .milliseconds(200))
-        #expect(store.entries.map(\.port) == [3000, 3001])
+        #expect(store.entries.map(\.port) == [3000, 3001, 3002, 3003, 3004])
     }
 
     @Test @MainActor func pollingStartsWithoutAVisibleMenu() async throws {
-        let homebrew = ActivePort(port: 8000, pid: 1, projectName: "homebrew", branch: "main", startTime: nil)
-        let store = PortStore(scanner: FakePortScanner(ports: [homebrew], delay: 0))
+        let omlx = ActivePort(port: 8000, pid: 1, projectName: "oMLX", branch: "", startTime: nil, backgroundService: .omlx)
+        let store = PortStore(scanner: FakePortScanner(ports: [omlx], delay: 0))
         store.ensurePolling()
         try await Task.sleep(for: .milliseconds(200))
         #expect(store.lastDiagnostics != nil)
@@ -515,5 +518,32 @@ struct ScanDiagnosticsTests {
         #expect(summary.contains("42"))
         #expect(summary.contains("3 ports"))
         #expect(summary.contains("lsof"))
+    }
+}
+
+struct BackgroundServiceTests {
+    @Test func parsesFullProcessTitlesAndPaths() {
+        let commands = LivePortScanner.parseProcessCommands("""
+          123 Raycast Backend
+          456 omlx-server
+          789 /opt/homebrew/bin/node
+          999 /Applications/Some App.app/Contents/MacOS/server
+          invalid line
+        """)
+        #expect(commands.count == 4)
+        #expect(commands[123] == "Raycast Backend")
+        #expect(commands[999] == "/Applications/Some App.app/Contents/MacOS/server")
+        #expect(LivePortScanner.backgroundService(processCommand: commands[123]) == .raycast)
+        #expect(LivePortScanner.backgroundService(processCommand: commands[456]) == .omlx)
+        #expect(LivePortScanner.backgroundService(processCommand: commands[789]) == nil)
+    }
+
+    @Test func doesNotGuessServiceFromRuntimeOrSimilarName() {
+        for command in ["node", "Python", "/opt/homebrew/bin/python3", "my-omlx-server", "Raycast Backend Test"] {
+            #expect(LivePortScanner.backgroundService(processCommand: command) == nil)
+        }
+        #expect(LivePortScanner.backgroundService(processCommand: nil) == nil)
+        #expect(BackgroundService.raycast.rawValue == "Raycast")
+        #expect(BackgroundService.omlx.rawValue == "oMLX")
     }
 }

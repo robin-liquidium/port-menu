@@ -85,7 +85,7 @@ final class PortStore {
                 lastDiagnostics = diag
                 pruneRecentlyKilled()
                 let filtered = ports.filter {
-                    $0.projectName.caseInsensitiveCompare("homebrew") != .orderedSame
+                    $0.backgroundService == nil
                         && !recentlyKilled.keys.contains($0.port)
                 }
                 applyUpdate(filtered)

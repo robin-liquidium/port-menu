@@ -8,17 +8,22 @@ No config. No setup. It just works.
 
 ## Personal fork
 
-This fork hides entries named `homebrew` (case insensitive) and removes the menu
-bar item when the filtered list is empty. Scanning continues in the background;
-the item returns when a development server is detected, normally within 5 seconds.
-Homebrew-installed runtimes running in other projects remain visible.
+This fork identifies Raycast and oMLX using their full process titles, instead of
+labeling them as `node` or `homebrew`. Both services are hidden from the menu and
+count. Filtering uses service identity, so ordinary Node servers and projects
+with the same names remain visible. Known services do not inherit Homebrew's Git
+branch.
+
+The menu bar item is removed when the filtered list is empty. Scanning continues
+in the background; the item returns when a development server is detected,
+normally within 5 seconds.
 
 The upstream updater is disabled so it cannot replace these changes.
 
 Build and run the local patch with `./script/build_and_run.sh --verify`.
 It uses local ad hoc signing by default. Set `CODE_SIGN_IDENTITY` and
 `DEVELOPMENT_TEAM` to use your Developer ID certificate. The output is
-`build/DerivedData/Build/Products/Release/Port Menu.app`, version `0.8.10-robin.1`.
+`build/DerivedData/Build/Products/Release/Port Menu.app`, version `0.8.10-robin.2`.
 
 ---
 

@@ -74,10 +74,11 @@ struct LivePortScanner: PortScanning {
         let pids = Set(parsed.map(\.pid))
         async let cwdResult = resolveCWDs(pids: pids)
         async let startTimeResult = resolveStartTimes(pids: pids)
-        let (cwds, startTimes) = await (cwdResult, startTimeResult)
+        async let commandResult = resolveProcessCommands(pids: pids)
+        let (cwds, startTimes, commands) = await (cwdResult, startTimeResult, commandResult)
 
         return await resolveProjects(parsed: parsed, cwds: cwds,
-                                     startTimes: startTimes)
+                                     startTimes: startTimes, commands: commands)
     }
 
     // MARK: - lsof Parsing (static for testability)
@@ -144,6 +145,35 @@ struct LivePortScanner: PortScanning {
         return result
     }
 
+    // lsof reports the runtime (node/Python); ps exposes service process titles.
+    private func resolveProcessCommands(pids: Set<Int32>) async -> [Int32: String] {
+        guard !pids.isEmpty else { return [:] }
+        let pidList = pids.map(String.init).joined(separator: ",")
+        guard let output = try? await runShell(
+            "/bin/ps", args: ["-p", pidList, "-o", "pid=,comm="], timeout: 5
+        ) else { return [:] }
+        return Self.parseProcessCommands(output)
+    }
+
+    static func parseProcessCommands(_ output: String) -> [Int32: String] {
+        var commands: [Int32: String] = [:]
+        for line in output.split(separator: "\n") {
+            let parts = line.split(maxSplits: 1, whereSeparator: { $0.isWhitespace })
+            guard parts.count == 2, let pid = Int32(parts[0]) else { continue }
+            commands[pid] = parts[1].trimmingCharacters(in: .whitespaces)
+        }
+        return commands
+    }
+
+    static func backgroundService(processCommand: String?) -> BackgroundService? {
+        guard let processCommand else { return nil }
+        switch URL(filePath: processCommand).lastPathComponent {
+        case "Raycast Backend": return .raycast
+        case "omlx-server": return .omlx
+        default: return nil
+        }
+    }
+
     // MARK: - Start Time Resolution
 
     private func resolveStartTimes(pids: Set<Int32>) async -> [Int32: Date] {
@@ -180,7 +210,8 @@ struct LivePortScanner: PortScanning {
     private func resolveProjects(
         parsed: [ParsedPort],
         cwds: [Int32: String],
-        startTimes: [Int32: Date]
+        startTimes: [Int32: Date],
+        commands: [Int32: String]
     ) async -> [ActivePort] {
         var gitRoots: [String: URL] = [:]
         var branches: [String: String] = [:]
@@ -219,15 +250,16 @@ struct LivePortScanner: PortScanning {
             let cwd = cwds[info.pid]
             let gitRoot = cwd.flatMap { gitRoots[$0] }
             let rootPath = gitRoot?.path()
+            let service = Self.backgroundService(processCommand: commands[info.pid])
 
-            if gitRoot == nil, !Self.shouldKeepFallbackProcess(processName: info.processName, cwd: cwd) {
+            if service == nil, gitRoot == nil, !Self.shouldKeepFallbackProcess(processName: info.processName, cwd: cwd) {
                 if Log.isVerbose {
                     Log.scanner.debug("Skipping non-project process '\(info.processName)' on port \(info.port)")
                 }
                 return nil
             }
 
-            let projectName = Self.displayName(
+            let projectName = service?.rawValue ?? Self.displayName(
                 processName: info.processName,
                 cwd: cwd,
                 gitRoot: gitRoot
@@ -241,8 +273,9 @@ struct LivePortScanner: PortScanning {
                 port: info.port,
                 pid: info.pid,
                 projectName: projectName,
-                branch: rootPath.flatMap { branches[$0] } ?? "",
-                startTime: startTimes[info.pid]
+                branch: service == nil ? (rootPath.flatMap { branches[$0] } ?? "") : "",
+                startTime: startTimes[info.pid],
+                backgroundService: service
             )
         }
     }
