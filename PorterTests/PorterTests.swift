@@ -365,16 +365,18 @@ struct FallbackFilterTests {
         let ports = [
             ActivePort(port: 8000, pid: 1, projectName: "oMLX", branch: "", startTime: nil, ownerID: "homebrew:omlx"),
             ActivePort(port: 7265, pid: 2, projectName: "Raycast", branch: "", startTime: nil, ownerID: "app:com.raycast.macos"),
+            ActivePort(port: 10100, pid: 8, projectName: "com.opencodex.proxy", branch: "", startTime: nil, ownerID: "launchd:com.opencodex.proxy"),
             ActivePort(port: 3000, pid: 3, projectName: "website", branch: "main", startTime: nil),
             ActivePort(port: 3001, pid: 4, projectName: "homebrew", branch: "main", startTime: nil),
             ActivePort(port: 3002, pid: 5, projectName: "Raycast", branch: "main", startTime: nil),
             ActivePort(port: 3003, pid: 6, projectName: "oMLX", branch: "main", startTime: nil),
-            ActivePort(port: 3004, pid: 7, projectName: "node", branch: "", startTime: nil)
+            ActivePort(port: 3004, pid: 7, projectName: "node", branch: "", startTime: nil),
+            ActivePort(port: 3005, pid: 9, projectName: "com.opencodex.proxy", branch: "main", startTime: nil)
         ]
         let store = PortStore(scanner: FakePortScanner(ports: ports, delay: 0))
         store.refresh()
         try await Task.sleep(for: .milliseconds(200))
-        #expect(store.entries.map(\.port) == [3000, 3001, 3002, 3003, 3004])
+        #expect(store.entries.map(\.port) == [3000, 3001, 3002, 3003, 3004, 3005])
     }
 
     @Test @MainActor func pollingStartsWithoutAVisibleMenu() async throws {

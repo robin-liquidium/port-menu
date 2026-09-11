@@ -13,6 +13,7 @@ struct ActivePort: Identifiable, Equatable, Hashable, Sendable {
 
     var isHiddenBackgroundService: Bool {
         ownerID == "app:com.raycast.macos" || ownerID == "homebrew:omlx"
+            || ownerID == "launchd:com.opencodex.proxy"
     }
 
     var url: URL {

@@ -14,8 +14,9 @@ projects, Python modules, and script paths. It ignores Homebrew's installation
 repository when finding projects. If ownership is unknown, it keeps a runtime
 label such as `Node` instead of guessing.
 
-Raycast and oMLX are hidden using stable owner IDs (`app:com.raycast.macos` and
-`homebrew:omlx`), independently of their display names or ports. Other identified
+Raycast, oMLX, and the OpenCodex proxy are hidden using stable owner IDs
+(`app:com.raycast.macos`, `homebrew:omlx`, and `launchd:com.opencodex.proxy`),
+independently of their display names or ports. Other identified
 launch services remain visible. Process titles alone do not trigger hiding.
 
 Detection is best effort: inaccessible process metadata, overwritten arguments,
@@ -32,7 +33,7 @@ The upstream updater is disabled so it cannot replace these changes.
 Build and run the local patch with `./script/build_and_run.sh --verify`.
 It uses local ad hoc signing by default. Set `CODE_SIGN_IDENTITY` and
 `DEVELOPMENT_TEAM` to use your Developer ID certificate. The output is
-`build/DerivedData/Build/Products/Release/Port Menu.app`, version `0.8.10-robin.3`.
+`build/DerivedData/Build/Products/Release/Port Menu.app`, version `0.8.10-robin.4`.
 
 ---
 

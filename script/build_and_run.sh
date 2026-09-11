@@ -17,7 +17,7 @@ xcodebuild build -quiet \
   CODE_SIGN_IDENTITY="${CODE_SIGN_IDENTITY:--}" \
   DEVELOPMENT_TEAM="${DEVELOPMENT_TEAM:-}" \
   OTHER_CODE_SIGN_FLAGS=--timestamp \
-  MARKETING_VERSION=0.8.10-robin.3 CURRENT_PROJECT_VERSION=21
+  MARKETING_VERSION=0.8.10-robin.4 CURRENT_PROJECT_VERSION=22
 
 app="$PWD/build/DerivedData/Build/Products/Release/Port Menu.app"
 codesign --verify --deep --strict "$app"
