@@ -84,7 +84,10 @@ final class PortStore {
                 lastError = nil
                 lastDiagnostics = diag
                 pruneRecentlyKilled()
-                let filtered = ports.filter { !recentlyKilled.keys.contains($0.port) }
+                let filtered = ports.filter {
+                    $0.projectName.caseInsensitiveCompare("homebrew") != .orderedSame
+                        && !recentlyKilled.keys.contains($0.port)
+                }
                 applyUpdate(filtered)
 
             case .failure(let error, _):

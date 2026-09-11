@@ -434,6 +434,28 @@ struct DockerDisplayNameTests {
         #expect(store.lastError != nil)
     }
 
+    @Test @MainActor func hidesHomebrewButKeepsDevelopmentProjects() async throws {
+        let ports = [
+            ActivePort(port: 8000, pid: 1, projectName: "homebrew", branch: "main", startTime: nil),
+            ActivePort(port: 8001, pid: 2, projectName: "Homebrew", branch: "main", startTime: nil),
+            ActivePort(port: 3000, pid: 3, projectName: "website", branch: "main", startTime: nil),
+            ActivePort(port: 3001, pid: 4, projectName: "homebrew-tools", branch: "main", startTime: nil)
+        ]
+        let store = PortStore(scanner: FakePortScanner(ports: ports, delay: 0))
+        store.refresh()
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(store.entries.map(\.port) == [3000, 3001])
+    }
+
+    @Test @MainActor func pollingStartsWithoutAVisibleMenu() async throws {
+        let homebrew = ActivePort(port: 8000, pid: 1, projectName: "homebrew", branch: "main", startTime: nil)
+        let store = PortStore(scanner: FakePortScanner(ports: [homebrew], delay: 0))
+        store.ensurePolling()
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(store.lastDiagnostics != nil)
+        #expect(store.entries.isEmpty)
+    }
+
     @Test @MainActor func killProcessAddsToRecentlyKilled() async throws {
         let ports = [
             ActivePort(port: 3000, pid: 99999, projectName: "test", branch: "", startTime: nil)

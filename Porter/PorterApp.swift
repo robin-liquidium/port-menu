@@ -15,15 +15,18 @@ struct PorterApp: App {
 
     init() {
         updaterController = SPUStandardUpdaterController(
-            startingUpdater: true,
+            // Keep upstream releases from replacing this personal build.
+            startingUpdater: false,
             updaterDelegate: updaterDelegate,
             userDriverDelegate: nil
         )
         moveToApplicationsIfNeeded()
+        // Poll even when there is no menu bar item to trigger onAppear.
+        PortStore.shared.ensurePolling()
     }
 
     var body: some Scene {
-        MenuBarExtra {
+        MenuBarExtra(isInserted: .constant(!store.entries.isEmpty)) {
             PortListView(updater: updaterController.updater)
                 .environment(store)
         } label: {
@@ -36,7 +39,6 @@ struct PorterApp: App {
                 Text(store.entries.count, format: .number)
                     .fontDesign(.monospaced)
             }
-            .onAppear { store.ensurePolling() }
         }
         .menuBarExtraStyle(.window)
         .commands {

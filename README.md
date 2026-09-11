@@ -6,6 +6,20 @@ A tiny macOS menu bar app that tracks your dev servers across projects.
 
 No config. No setup. It just works.
 
+## Personal fork
+
+This fork hides entries named `homebrew` (case insensitive) and removes the menu
+bar item when the filtered list is empty. Scanning continues in the background;
+the item returns when a development server is detected, normally within 5 seconds.
+Homebrew-installed runtimes running in other projects remain visible.
+
+The upstream updater is disabled so it cannot replace these changes.
+
+Build and run the local patch with `./script/build_and_run.sh --verify`.
+It uses local ad hoc signing by default. Set `CODE_SIGN_IDENTITY` and
+`DEVELOPMENT_TEAM` to use your Developer ID certificate. The output is
+`build/DerivedData/Build/Products/Release/Port Menu.app`, version `0.8.10-robin.1`.
+
 ---
 
 ## What it does
